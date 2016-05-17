@@ -127,6 +127,9 @@ void dtFreeTileCachePolyMesh(dtTileCacheAlloc* alloc, dtTileCachePolyMesh* lmesh
 dtStatus dtMarkCylinderArea(dtTileCacheLayer& layer, const float* orig, const float cs, const float ch,
 							const float* pos, const float radius, const float height, const unsigned char areaId);
 
+dtStatus dtMarkBoxArea(dtTileCacheLayer& layer, const float* orig, const float cs, const float ch,
+	const float* pos, const float angle, const float height, const float halfx, const float halfz, const unsigned char areaId);
+
 dtStatus dtBuildTileCacheRegions(dtTileCacheAlloc* alloc,
 								 dtTileCacheLayer& layer,
 								 const int walkableClimb);

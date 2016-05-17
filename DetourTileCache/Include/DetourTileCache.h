@@ -39,6 +39,7 @@ static const int DT_MAX_TOUCHED_TILES = 8;
 struct dtTileCacheObstacle
 {
 	float pos[3], radius, height;
+	float halfx, halfz, angle;
 	dtCompressedTileRef touched[DT_MAX_TOUCHED_TILES];
 	dtCompressedTileRef pending[DT_MAX_TOUCHED_TILES];
 	unsigned short salt;
@@ -105,7 +106,8 @@ public:
 	
 	dtStatus removeTile(dtCompressedTileRef ref, unsigned char** data, int* dataSize);
 	
-	dtStatus addObstacle(const float* pos, const float radius, const float height, dtObstacleRef* result);
+	dtStatus addCylinderObstacle(const float* pos, const float radius, const float height, dtObstacleRef* result);
+	dtStatus addBoxObstacle(const float* pos, const float halfx, const float halfz, const float angle, const float height, dtObstacleRef* result);
 	dtStatus removeObstacle(const dtObstacleRef ref);
 	
 	dtStatus queryTiles(const float* bmin, const float* bmax,

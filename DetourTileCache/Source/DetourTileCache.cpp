@@ -350,7 +350,7 @@ dtStatus dtTileCache::removeTile(dtCompressedTileRef ref, unsigned char** data, 
 }
 
 
-dtStatus dtTileCache::addObstacle(const float* pos, const float radius, const float height, dtObstacleRef* result)
+dtStatus dtTileCache::addCylinderObstacle(const float* pos, const float radius, const float height, dtObstacleRef* result)
 {
 	if (m_nreqs >= MAX_REQUESTS)
 		return DT_FAILURE | DT_BUFFER_TOO_SMALL;
@@ -372,6 +372,9 @@ dtStatus dtTileCache::addObstacle(const float* pos, const float radius, const fl
 	dtVcopy(ob->pos, pos);
 	ob->radius = radius;
 	ob->height = height;
+	ob->angle = 0.0f;
+	ob->halfx = 0.0f;
+	ob->halfz = 0.0f;
 	
 	ObstacleRequest* req = &m_reqs[m_nreqs++];
 	memset(req, 0, sizeof(ObstacleRequest));
@@ -381,6 +384,43 @@ dtStatus dtTileCache::addObstacle(const float* pos, const float radius, const fl
 	if (result)
 		*result = req->ref;
 	
+	return DT_SUCCESS;
+}
+
+dtStatus dtTileCache::addBoxObstacle(const float* pos, const float halfx, const float halfz, const float angle, const float height, dtObstacleRef* result)
+{
+	if (m_nreqs >= MAX_REQUESTS)
+		return DT_FAILURE | DT_BUFFER_TOO_SMALL;
+
+	dtTileCacheObstacle* ob = 0;
+	if (m_nextFreeObstacle)
+	{
+		ob = m_nextFreeObstacle;
+		m_nextFreeObstacle = ob->next;
+		ob->next = 0;
+	}
+	if (!ob)
+		return DT_FAILURE | DT_OUT_OF_MEMORY;
+
+	unsigned short salt = ob->salt;
+	memset(ob, 0, sizeof(dtTileCacheObstacle));
+	ob->salt = salt;
+	ob->state = DT_OBSTACLE_PROCESSING;
+	dtVcopy(ob->pos, pos);
+	ob->radius = 0.00f;
+	ob->height = height;
+	ob->angle = angle;
+	ob->halfx = halfx;
+	ob->halfz = halfz;
+
+	ObstacleRequest* req = &m_reqs[m_nreqs++];
+	memset(req, 0, sizeof(ObstacleRequest));
+	req->action = REQUEST_ADD;
+	req->ref = getObstacleRef(ob);
+
+	if (result)
+		*result = req->ref;
+
 	return DT_SUCCESS;
 }
 
@@ -604,8 +644,14 @@ dtStatus dtTileCache::buildNavMeshTile(const dtCompressedTileRef ref, dtNavMesh*
 			continue;
 		if (contains(ob->touched, ob->ntouched, ref))
 		{
-			dtMarkCylinderArea(*bc.layer, tile->header->bmin, m_params.cs, m_params.ch,
-							   ob->pos, ob->radius, ob->height, 0);
+			if (ob->halfx <= 0.0f && ob->halfz <= 0.0f) {
+				dtMarkCylinderArea(*bc.layer, tile->header->bmin, m_params.cs, m_params.ch,
+					ob->pos, ob->radius, ob->height, 0);
+			}
+			else {
+				dtMarkBoxArea(*bc.layer, tile->header->bmin, m_params.cs, m_params.ch,
+					ob->pos, ob->angle, ob->height, ob->halfx, ob->halfz, 0);
+			}
 		}
 	}
 	
@@ -699,10 +745,31 @@ void dtTileCache::calcTightTileBounds(const dtTileCacheLayerHeader* header, floa
 
 void dtTileCache::getObstacleBounds(const struct dtTileCacheObstacle* ob, float* bmin, float* bmax) const
 {
-	bmin[0] = ob->pos[0] - ob->radius;
-	bmin[1] = ob->pos[1];
-	bmin[2] = ob->pos[2] - ob->radius;
-	bmax[0] = ob->pos[0] + ob->radius;
-	bmax[1] = ob->pos[1] + ob->height;
-	bmax[2] = ob->pos[2] + ob->radius;	
+	if (ob->halfx <= 0.0f && ob->halfz <= 0.0f) {
+		bmin[0] = ob->pos[0] - ob->radius;
+		bmin[1] = ob->pos[1];
+		bmin[2] = ob->pos[2] - ob->radius;
+		bmax[0] = ob->pos[0] + ob->radius;
+		bmax[1] = ob->pos[1] + ob->height;
+		bmax[2] = ob->pos[2] + ob->radius;
+	}
+	else {
+		float angle = ob->angle;
+
+		float c = cosf(angle);
+		float s = sinf(angle);
+
+		float rotated_x[2] = { ob->halfx * c, ob->halfx * s };
+		float rotated_z[2] = { -ob->halfz * s, ob->halfz * c };
+
+		float max_x = dtAbs(rotated_x[0]) + dtAbs(rotated_z[0]);
+		float max_z = dtAbs(rotated_x[1]) + dtAbs(rotated_z[1]);
+
+		bmin[0] = ob->pos[0] - max_x;
+		bmin[1] = ob->pos[1];
+		bmin[2] = ob->pos[2] - max_z;
+		bmax[0] = ob->pos[0] + max_x;
+		bmax[1] = ob->pos[1] + ob->height;
+		bmax[2] = ob->pos[2] + max_z;
+	}
 }

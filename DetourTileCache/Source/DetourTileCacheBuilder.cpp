@@ -2005,6 +2005,140 @@ dtStatus dtMarkCylinderArea(dtTileCacheLayer& layer, const float* orig, const fl
 }
 
 
+dtStatus dtMarkBoxArea(dtTileCacheLayer& layer, const float* orig, const float cs, const float ch,
+	const float* pos, const float angle, const float height, const float halfx, const float halfz, const unsigned char areaId)
+{
+	float c = cosf(angle);
+	float s = sinf(angle);
+
+	float rotated_x[2] = { halfx * c, halfx * s };
+	float rotated_z[2] = { -halfz * s, halfz * c };
+
+	const int w = (int)layer.header->width;
+	const int h = (int)layer.header->height;
+
+	const float ics = 1.0f / cs;
+	const float ich = 1.0f / ch;
+
+	int miny = (int)dtMathFloorf((pos[1] - orig[1])*ich);
+	int maxy = (int)dtMathFloorf((pos[1] + height - orig[1])*ich);
+
+	float rpos[2] = { pos[0] - orig[0], pos[2] - orig[2] };
+
+	{
+		float max_x = dtAbs(rotated_x[0]) + dtAbs(rotated_z[0]);
+		float max_z = dtAbs(rotated_x[1]) + dtAbs(rotated_z[1]);
+
+		if ((rpos[0] - max_x) * ich >= w) return DT_SUCCESS;
+		if ((rpos[0] + max_x) * ich < 0) return DT_SUCCESS;
+		if ((rpos[1] - max_z) * ich >= h) return DT_SUCCESS;
+		if ((rpos[1] + max_z) * ich < 0) return DT_SUCCESS;
+	}
+
+	int lu[2], ru[2], ld[2], rdiff[2];
+
+	lu[0] = (rpos[0] - rotated_x[0] - rotated_z[0]) * ics;
+	lu[1] = (rpos[1] - rotated_x[1] - rotated_z[1]) * ics;
+	ld[0] = (rpos[0] - rotated_x[0] + rotated_z[0]) * ics;
+	ld[1] = (rpos[1] - rotated_x[1] + rotated_z[1]) * ics;
+
+	rdiff[0] = (rpos[0] + rotated_x[0] - rotated_z[0]) * ics - lu[0];
+	rdiff[1] = (rpos[1] + rotated_x[1] - rotated_z[1]) * ics - lu[1];
+
+	// lu - ld
+
+	bool steep_h = dtAbs(ld[1] - lu[1]) > dtAbs(ld[0] - lu[0]);
+	if (steep_h) {
+		dtSwap(lu[0], lu[1]);
+		dtSwap(ld[0], ld[1]);
+	}
+
+	if (lu[0] > ld[0]) {
+		dtSwap(lu[0], ld[0]);
+		dtSwap(lu[1], ld[1]);
+	}
+
+	int deltax_h = ld[0] - lu[0];
+	int deltay_h = dtAbs(ld[1] - lu[1]);
+
+	int error_h = deltax_h / 2;
+
+	int ystep_h = (lu[1] < ld[1]) ? 1 : -1;
+	int y_h = lu[1];
+
+	for (int x_h = lu[0]; x_h <= ld[0]; ++x_h) {
+		// d - e
+		{
+			int d[2];
+			if (steep_h) {
+				d[0] = y_h;
+				d[1] = x_h;
+			}
+			else {
+				d[0] = x_h;
+				d[1] = y_h;
+			}
+
+			int e[2] = { d[0] + rdiff[0], d[1] + rdiff[1] };
+
+			bool steep_w = dtAbs(e[1] - d[1]) > dtAbs(e[0] - d[0]);
+			if (steep_w) {
+				dtSwap(d[0], d[1]);
+				dtSwap(e[0], e[1]);
+			}
+
+			if (d[0] > e[0]) {
+				dtSwap(d[0], e[0]);
+				dtSwap(d[1], e[1]);
+			}
+
+			int deltax_w = e[0] - d[0];
+			int deltay_w = dtAbs(e[1] - d[1]);
+
+			int error_w = deltax_w / 2;
+
+			int ystep_w = (d[1] < e[1]) ? 1 : -1;
+			int y_w = d[1];
+
+			for (int x_w = d[0]; x_w <= e[0]; ++x_w) {
+				int px, py;
+				if (steep_w) {
+					px = y_w;
+					py = x_w;
+				}
+				else {
+					px = x_w;
+					py = y_w;
+				}
+
+				if (px >= 0 && px < w && py >= 0 && py < h) {
+
+					const int y = layer.heights[px + py*w];
+					if (y >= miny && y <= maxy){
+						layer.areas[px + py*w] = areaId;
+					}
+				}
+
+				error_w -= deltay_w;
+
+				if (error_w < 0) {
+					y_w += ystep_w;
+					error_w += deltax_w;
+				}
+			}
+		}
+
+		error_h -= deltay_h;
+
+		if (error_h < 0) {
+			y_h += ystep_h;
+			error_h += deltax_h;
+		}
+	}
+
+	return DT_SUCCESS;
+}
+
 dtStatus dtBuildTileCacheLayer(dtTileCacheCompressor* comp,
 							   dtTileCacheLayerHeader* header,
 							   const unsigned char* heights,
