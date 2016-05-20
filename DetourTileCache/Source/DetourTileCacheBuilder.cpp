@@ -2011,8 +2011,11 @@ dtStatus dtMarkBoxArea(dtTileCacheLayer& layer, const float* orig, const float c
 	float c = cosf(angle);
 	float s = sinf(angle);
 
-	float rotated_x[2] = { halfx * c, halfx * s };
-	float rotated_z[2] = { -halfz * s, halfz * c };
+	float fixed_halfx = halfx + cs;
+	float fixed_halfz = halfz + cs;
+
+	float rotated_x[2] = { fixed_halfx * c, fixed_halfx * s };
+	float rotated_z[2] = { -fixed_halfz * s, fixed_halfz * c };
 
 	const int w = (int)layer.header->width;
 	const int h = (int)layer.header->height;
